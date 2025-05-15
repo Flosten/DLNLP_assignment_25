@@ -445,9 +445,9 @@ class CNNLSTMAttn(nn.Module):
         self,
         input_size=768,
         # seq_len=60,
-        hidden_size=128,
+        hidden_size=32,
         num_classes=2,
-        cnn_out=256,
+        cnn_out=128,
         kernel_size=5,
     ):
         super().__init__()
@@ -515,14 +515,14 @@ class CNNLSTMAttn(nn.Module):
         # x: [batch, seq_len, input_size] -> [batch, input_size, seq_len]
         x = x.permute(0, 2, 1)  # [batch, input_size, seq_len]
         x = self.cnn(x)  # [batch, cnn_out, seq_len]
-        # x = self.dropout1(x)
+        x = self.dropout1(x)
         x = x.permute(0, 2, 1)  # [batch, seq_len, cnn_out]
         lstm_output, _ = self.lstm(x)  # [batch, seq_len, hidden_size]
-        # lstm_output = self.dropout2(lstm_output)
+        lstm_output = self.dropout2(lstm_output)
         attention_out, attention_score = self.attention_mechanism(
             lstm_output, mask
         )  # [batch, hidden_size]
-        # attention_out = self.dropout1(attention_out)
+        attention_out = self.dropout1(attention_out)
         output = self.fc(attention_out)  # [batch, num_classes]
         return output, attention_score  # [batch, num_classes], [batch, seq_len, 1]
 
