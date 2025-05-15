@@ -1,3 +1,11 @@
+"""
+This module contains functions for loading and saving data from/to CSV files.
+
+The functions include:
+- `load_data`: Loads data from a CSV file.
+- `save_data`: Saves data to a CSV file.
+"""
+
 import os
 
 import pandas as pd
