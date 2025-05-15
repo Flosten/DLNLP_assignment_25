@@ -1,15 +1,39 @@
+"""
+This module contains functions for preprocessing text data, including: mapping labels,
+checking for empty rows, removing garbled text, removing different languages,
+embedding the dataset, and splitting the dataset into training, validation, and test sets.
+
+The functions include:
+- `text_preprocessing`: Preprocess the dataset.
+- `text_english_chech`: Check if the text is in English.
+- `label_mapping`: Map the labels in the dataset to numerical values.
+- `check_empty_row`: Check for empty rows in the dataset.
+- `remove_empty_row`: Remove empty rows from the dataset.
+- `construct_dataset`: Construct a balanced dataset .
+- `clean_garbled_text`: Remove garbled text from the dataset.
+- `check_tokens_length`: Check the length of the tokens in the texts.
+- `tokenization_embedding`: Using BERT to get the embeddings for the dataset.
+- `tokenization_word2vev`: Tokenize the text for word2vec embedding.
+- `word2vector`: Convert the tokens to word vectors using word2vec.
+- `pad_or_truncate`: Pad or truncate a tensor to a specified maximum length.
+
+Noticed: this module contains BERT embedding and word2vec embedding,
+and we finally use BERT for embedding.
+"""
+
 import os
 import re
 
-import gensim.downloader as api
-import langdetect
+# import gensim.downloader as api
+# import langdetect
 import pandas as pd
 import torch
 import tqdm
 from langdetect import detect
 from langdetect.lang_detect_exception import LangDetectException
 from sklearn.model_selection import train_test_split
-from torch.nn.utils.rnn import pack_padded_sequence
+
+# from torch.nn.utils.rnn import pack_padded_sequence
 from transformers import BertModel, BertTokenizer
 
 import B.visualising as vis
@@ -17,6 +41,17 @@ from A.data_acquisition import save_data
 
 
 def text_preprocessing(dataset):
+    """
+    This function is used to preprocess the dataset, including: mapping the labels,
+    removing different languages, removing empty rows, removing garbled text,
+    splitting the dataset into training, validation, and test sets, and embedding the dataset.
+
+    Args:
+        dataset (pd.DataFrame): The dataset to preprocess.
+
+    Returns:
+        tuple: A tuple containing the trainset, valset, and testset.
+    """
     # map the label to 0 and 1
     dataset_mapped = label_mapping(dataset)
     # remove different languages
@@ -53,15 +88,20 @@ def text_preprocessing(dataset):
     trainset_file_name = "trainset"
     valset_file_name = "valset"
     testset_file_name = "testset"
-    tokenization_embedding(
-        trainset, data_folder, trainset_file_name
+    trainset_embeddings, trainset_labels, trainset_attention_masks = (
+        tokenization_embedding(trainset, data_folder, trainset_file_name)
     )  # save the embeddings
+    print("Get the embeddings for trainset.")
     print("Embeddings saved for trainset.")
-    tokenization_embedding(valset, data_folder, valset_file_name)  # save the embeddings
-    print("Embeddings saved for valset.")
-    tokenization_embedding(
-        testset, data_folder, testset_file_name
+    valset_embeddings, valset_labels, valset_attention_masks = tokenization_embedding(
+        valset, data_folder, valset_file_name
     )  # save the embeddings
+    print("Get the embeddings for valset.")
+    print("Embeddings saved for valset.")
+    testset_embeddings, testset_labels, testset_attention_masks = (
+        tokenization_embedding(testset, data_folder, testset_file_name)
+    )  # save the embeddings
+    print("Get the embeddings for testset.")
     print("Embeddings saved for testset.")
 
     # # using word2vec
@@ -120,6 +160,17 @@ def text_preprocessing(dataset):
     #     testset_tensor,
     #     testset_labels,
     # )
+    return (
+        trainset_embeddings,
+        trainset_labels,
+        trainset_attention_masks,
+        valset_embeddings,
+        valset_labels,
+        valset_attention_masks,
+        testset_embeddings,
+        testset_labels,
+        testset_attention_masks,
+    )
 
 
 def text_english_chech(text):
@@ -159,6 +210,15 @@ def label_mapping(dataset: pd.DataFrame):
 
 
 def check_empty_row(dataset: pd.DataFrame):
+    """
+    Check for empty rows in the dataset.
+
+    Args:
+        dataset (pd.DataFrame): The dataset to check.
+
+    Returns:
+        pd.DataFrame: The dataset with empty rows removed.
+    """
     empty_bool = dataset[["Review", "Freshness"]].isnull().any(axis=1)
     empty_num = empty_bool.sum()
     print(f"Number of empty rows: {empty_num}")
@@ -186,6 +246,16 @@ def remove_empty_row(dataset: pd.DataFrame):
 
 
 def construct_dataset(dataset: pd.DataFrame, sample_size: int):
+    """
+    Construct a balanced dataset with equal number of positive and negative samples.
+
+    Args:
+        dataset (pd.DataFrame): The dataset to construct.
+        sample_size (int): The number of samples to include in each class.
+
+    Returns:
+        tuple: A tuple containing the trainset, valset, and testset.
+    """
     # Construct a balanced dataset with equal number of positive and negative samples
     df_positive = dataset[dataset["Freshness"] == 1].sample(
         n=sample_size, random_state=711
@@ -244,6 +314,15 @@ def clean_garbled_text(dataset):
 
 
 def check_tokens_length(texts):
+    """
+    Check the length of the tokens in the texts.
+
+    Args:
+        texts (list): The texts to check.
+
+    Returns:
+        fig, ax: The figure and axis of the histogram.
+    """
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     lengths = [len(tokenizer.tokenize(text)) for text in texts]
     fig, ax = vis.plot_hist(lengths)
@@ -251,6 +330,17 @@ def check_tokens_length(texts):
 
 
 def tokenization_embedding(dataset: pd.DataFrame, folder_path: str, file_name: str):
+    """
+    Using BERT to get the embeddings for the dataset.
+
+    Args:
+        dataset (pd.DataFrame): The dataset to embed.
+        folder_path (str): The folder path to save the embeddings.
+        file_name (str): The file name to save the embeddings.
+
+    Returns:
+        tuple: A tuple containing the embeddings, labels, and attention masks.
+    """
     texts = dataset["Review"].tolist()
     labels = dataset["Freshness"].tolist()
 
@@ -265,6 +355,7 @@ def tokenization_embedding(dataset: pd.DataFrame, folder_path: str, file_name: s
     all_labels = []
     all_attention_masks = []
 
+    # Iterate over the dataset and get the embeddings
     with torch.no_grad():
         for text, label in tqdm.tqdm(zip(texts, labels), total=len(texts)):
             # Tokenize the text
@@ -286,21 +377,32 @@ def tokenization_embedding(dataset: pd.DataFrame, folder_path: str, file_name: s
             all_embeddings.append(embeddings)
             all_labels.append(label)
             all_attention_masks.append(attention_mask)
-    torch.save(
-        all_embeddings,
-        os.path.join(folder_path, file_name + "_embeddings.pt"),
-    )
-    torch.save(
-        all_labels,
-        os.path.join(folder_path, file_name + "_labels.pt"),
-    )
-    torch.save(
-        all_attention_masks,
-        os.path.join(folder_path, file_name + "_attention_masks.pt"),
-    )
+
+    # # save the embeddings, labels, and attention masks
+    # torch.save(
+    #     all_embeddings,
+    #     os.path.join(folder_path, file_name + "_embeddings.pt"),
+    # )
+    # torch.save(
+    #     all_labels,
+    #     os.path.join(folder_path, file_name + "_labels.pt"),
+    # )
+    # torch.save(
+    #     all_attention_masks,
+    #     os.path.join(folder_path, file_name + "_attention_masks.pt"),
+    # )
+
+    return all_embeddings, all_labels, all_attention_masks
 
 
 def tokenization_word2vev(text):
+    """
+    Tokenize the text for word2vec embedding.
+    Args:
+        text (str): The text to tokenize.
+    Returns:
+        list: The tokenized text.
+    """
     # lowercase the text
     text = text.lower()
     # remove punctuation
@@ -310,6 +412,14 @@ def tokenization_word2vev(text):
 
 
 def word2vector(tokens, model):
+    """
+    Convert the tokens to word vectors using word2vec.
+    Args:
+        tokens (list): The tokens to convert.
+        model (gensim.models.KeyedVectors): The word2vec model.
+    Returns:
+        torch.Tensor: The word vectors.
+    """
 
     word_vectors = []
     for word in tokens:
