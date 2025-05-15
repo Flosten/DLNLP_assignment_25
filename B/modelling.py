@@ -251,7 +251,7 @@ class SimpleLSTM(nn.Module):
     A simple LSTM model for text classification.
     """
 
-    def __init__(self, hidden_dim=50, num_classes=2):
+    def __init__(self, hidden_dim=32, num_classes=2):
         super().__init__()
         # self.project = nn.Linear(768, 30)
         # self.dropout = nn.Dropout(0.5)
@@ -300,7 +300,7 @@ class CNNLSTM(nn.Module):
         self,
         input_size=768,
         # seq_len=60,
-        hidden_size=50,
+        hidden_size=32,
         num_classes=2,
         cnn_out=128,
         kernel_size=5,
@@ -350,6 +350,92 @@ class CNNLSTM(nn.Module):
         return output  # [batch, num_classes]
 
 
+# class CNNLSTMAttn(nn.Module):
+#     """
+#     This model combines CNN, LSTM, and attention mechanism for text classification.
+#     """
+
+#     def __init__(
+#         self,
+#         input_size=768,
+#         # seq_len=60,
+#         hidden_size=50,
+#         num_classes=2,
+#         cnn_out=128,
+#         kernel_size=5,
+#     ):
+#         super().__init__()
+#         self.cnn = nn.Conv1d(
+#             in_channels=input_size,
+#             out_channels=cnn_out,
+#             kernel_size=kernel_size,
+#             padding=2,
+#         )  # 1D convolution, shape [batch, input_size, seq_len] -> [batch, cnn_out, seq_len]
+#         self.lstm = nn.LSTM(
+#             input_size=cnn_out,
+#             hidden_size=hidden_size,
+#             batch_first=True,
+#             # dropout=0.5,
+#             num_layers=1,
+#             bidirectional=False,
+#         )  # LSTM layer, shape [batch, seq_len, cnn_out] -> [batch, seq_len, hidden_size]
+#         self.dropout1 = nn.Dropout(0.4)  # dropout layer
+#         self.dropout2 = nn.Dropout(0.6)  # dropout layer
+#         # attention layer
+#         self.attention = nn.Linear(hidden_size, 1)
+#         # fully connected layer
+#         self.fc = nn.Linear(hidden_size, num_classes)
+
+#     def attention_mechanism(self, lstm_out, mask):
+#         """
+#         Attention mechanism to compute the context vector and attention weights.
+
+#         Args:
+#             lstm_out (torch.Tensor): The output from the LSTM layer.
+#             mask (torch.Tensor): The attention mask from BERT.
+
+#         Returns:
+#             torch.Tensor: The context vector.
+#             torch.Tensor: The attention weights.
+#         """
+#         attn_weights = self.attention(lstm_out).squeeze(-1)  # [batch, seq_len]
+#         mask = mask.to(dtype=torch.bool)
+
+#         attn_weights[~mask] = float("-inf")  # Set masked positions to -inf
+#         attn_weights = F.softmax(attn_weights, dim=1)  # [batch, seq_len]
+#         attn_weights = attn_weights.unsqueeze(-1)  # [batch, seq_len, 1]
+#         context_vector = torch.sum(
+#             attn_weights * lstm_out, dim=1
+#         )  # [batch, hidden_size]
+#         return context_vector, attn_weights
+
+#     def forward(self, x, mask):
+#         """
+#         Forward pass of the CNN + LSTM + Attention model.
+
+#         Args:
+#             x (torch.Tensor): The input data.
+#             mask (torch.Tensor): The attention mask.
+
+#         Returns:
+#             torch.Tensor: The output of the model.
+#             torch.Tensor: The attention scores.
+#         """
+#         # x: [batch, seq_len, input_size] -> [batch, input_size, seq_len]
+#         x = x.permute(0, 2, 1)  # [batch, input_size, seq_len]
+#         x = self.cnn(x)  # [batch, cnn_out, seq_len]
+#         # x = self.dropout1(x)
+#         x = x.permute(0, 2, 1)  # [batch, seq_len, cnn_out]
+#         lstm_output, _ = self.lstm(x)  # [batch, seq_len, hidden_size]
+#         # lstm_output = self.dropout2(lstm_output)
+#         attention_out, attention_score = self.attention_mechanism(
+#             lstm_output, mask
+#         )  # [batch, hidden_size]
+#         # attention_out = self.dropout1(attention_out)
+#         output = self.fc(attention_out)  # [batch, num_classes]
+#         return output, attention_score  # [batch, num_classes], [batch, seq_len, 1]
+
+
 class CNNLSTMAttn(nn.Module):
     """
     This model combines CNN, LSTM, and attention mechanism for text classification.
@@ -359,9 +445,9 @@ class CNNLSTMAttn(nn.Module):
         self,
         input_size=768,
         # seq_len=60,
-        hidden_size=50,
+        hidden_size=128,
         num_classes=2,
-        cnn_out=128,
+        cnn_out=256,
         kernel_size=5,
     ):
         super().__init__()
@@ -382,7 +468,7 @@ class CNNLSTMAttn(nn.Module):
         self.dropout1 = nn.Dropout(0.4)  # dropout layer
         self.dropout2 = nn.Dropout(0.6)  # dropout layer
         # attention layer
-        self.attention = nn.Linear(hidden_size, 1)
+        self.query = nn.Parameter(torch.randn(hidden_size))
         # fully connected layer
         self.fc = nn.Linear(hidden_size, num_classes)
 
@@ -398,12 +484,17 @@ class CNNLSTMAttn(nn.Module):
             torch.Tensor: The context vector.
             torch.Tensor: The attention weights.
         """
-        attn_weights = self.attention(lstm_out).squeeze(-1)  # [batch, seq_len]
-        mask = mask.to(dtype=torch.bool)
+        q = (
+            self.query.unsqueeze(0).expand(lstm_out.size(0), -1).unsqueeze(-1)
+        )  # [batch, hidden_size, 1]
+        attn_scores = torch.bmm(lstm_out, q).squeeze(-1)  # [batch, seq_len]
 
-        attn_weights[~mask] = float("-inf")  # Set masked positions to -inf
-        attn_weights = F.softmax(attn_weights, dim=1)  # [batch, seq_len]
+        mask = mask.to(dtype=torch.bool)
+        attn_scores[~mask] = float("-inf")  # Set masked positions to -inf
+
+        attn_weights = F.softmax(attn_scores, dim=1)  # [batch, seq_len]
         attn_weights = attn_weights.unsqueeze(-1)  # [batch, seq_len, 1]
+
         context_vector = torch.sum(
             attn_weights * lstm_out, dim=1
         )  # [batch, hidden_size]
