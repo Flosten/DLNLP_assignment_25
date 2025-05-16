@@ -24,8 +24,8 @@ def sentiment_analysis():
     evaluation, and visualization.
     """
     # set the folder path and file name
-    data_folder = ".\Datasets"
-    figure_folder = ".\Figures"
+    data_folder = os.path.join(".", "Datasets")
+    figure_folder = os.path.join(".", "Figures")
     original_dataset = "dataset_select.csv"
     trainset_name = "original_trainset.csv"
     valset_name = "original_valset.csv"
